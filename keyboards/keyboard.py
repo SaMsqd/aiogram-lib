@@ -48,7 +48,7 @@ class Keyboards:
 
     class MyInlineKeyboard(MyBaseKeyboard):
         def __init__(self, row_width: int, buttons: list[ButtonModel],
-                     state_group_state: str,**kwargs):
+                     state_group_state: str, **kwargs):
             super().__init__(row_width, buttons, state_group_state, **kwargs)
 
     class MyPaginatedInlineKeyboard(MyBaseKeyboard):

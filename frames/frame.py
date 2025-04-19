@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Filter, StateFilter
 from aiogram.types import CallbackQuery
+from aiogram.types import Message
 
 
 class MyFilter(Filter):
@@ -20,8 +21,11 @@ class TestStates(StatesGroup):
 
 
 class Frame:
-    def __init__(self, buttons, filters, text):
+    def __init__(self, keyboard, text):
         pass
+
+    def generate_message(self):
+        Message.reply(text=self.text, reply_markup=self.keyboard)
 
 
 class FrameManager:
@@ -29,14 +33,18 @@ class FrameManager:
     def __init__(self, bot: Bot, states: StatesGroup, context: FSMContext):
         # Реализовать паттерн state
         self.bot = bot
-        self.current_state = []     # стек. Тут отлов первого и последнего стейта
-        self.states = {state: {'buttons': None, 'text': None}   # Проверить нужны ли фильтры
-                       for state in states.__all_states_names__}
+        self.current_state: int = 0     # Текущий стейт (его индекс)
+        self.states = [state for state in states.__all_states_names__]  # Текстовый группы стейтов
+        self.frames = dict()
         self.context = context
 
-    @dp.callback_query()
-    def handle_event(self, callback_query: CallbackQuery, state: FSMContext):
-        pass
+    def add_frame(self, text, keyboard, state_key: str):
+        if state_key in self.states:
+            self.frames[state_key] = Frame(text, keyboard)
+
+    @dp.callback_query()    # 'key'=value
+    async def handle_event(self, callback_query: CallbackQuery, state: FSMContext):
+        await state.update_data(**{self.states[self.current_state]: callback_query.data})
 
     @dp.callback_query(F.data == 'next')
     async def next(self, callback_query: CallbackQuery, state: FSMContext):
