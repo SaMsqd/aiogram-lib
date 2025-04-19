@@ -71,12 +71,12 @@ class KeyboardsCreator:
                      state_group_state: str,
                      **kwargs):
         """
-        Сгенирировать клавиатуру
+        Сгенерировать клавиатуру
         :param keyboard_type: inline or paginated_inline. Default - inline
         :param row_width:
         :param buttons: Сюда список с текстом. Если указан словарь, то в нём должен быть указан тип кнопки и все
         именованные параметры для её инициализации. По-умолчанию - inline
-        :param state_group_state: текстовый варинат стейта, при котором нужно создать клавиатуру
+        :param state_group_state: текстовый вариант стейта, при котором нужно создать клавиатуру
         :param kwargs:
         """
         return cls.get_type(keyboard_type)(row_width=row_width,
