@@ -1,19 +1,12 @@
 from aiogram import Bot, Dispatcher, Router, F
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.state import StatesGroup, State
 
 from keyboards.keyboard import KeyboardsCreator
 from keyboards.models import ButtonModel
-from frames.models import FrameModel
-
-
-class TestStates(StatesGroup):
-    city = State()
-    district = State()
-    t = State()
-    t2 = State()
-    t3= State()
+from .models import FrameModel
 
 
 class Frame:
@@ -63,16 +56,18 @@ class Frame:
         if hasattr(self, 'keyboard'):
             return {'text': self.text, 'reply_markup': self.keyboard}
         else:
-            return {'text': self.text, 'reply_markup': await self.generate_keyboard(self.buttons_generator(),
-                                                                                    self.state,
-                                                                                    **kwargs)}
+            return {'text': self.text, 'reply_markup': self.generate_keyboard(state=self.state,
+                                                                              **(await self.buttons_generator(**kwargs)),
+                                                                                    )}
 
 class FrameManager:
-    router = Router()
-    def __init__(self, states: StatesGroup, frames: list[FrameModel]):
+    router: Router
+    def __init__(self, states: StatesGroup, frames: list[FrameModel], is_start_route=False):
+        self.router = Router(name=StatesGroup.__name__)
         self.current_state: int = 0
         self.states = self.generate_frames(states, frames)
-        self.register()
+        self.register(is_start_route)
+        print(f'frames registered, router {StatesGroup.__name__} is ready to work')
 
     def generate_frames(self, states, frames):
         res = dict()
@@ -88,11 +83,12 @@ class FrameManager:
             res[i] = [states.__states__[i], Frame(**frame, state=states.__all_states_names__[i])]
         return res
 
-    def register(self):
-        @self.router.message()
-        async def start(message: Message, state: FSMContext):
-            await state.set_state(self.states[self.current_state][0])
-            await message.answer(**(await self.states[self.current_state][1].get_for_send()))
+    def register(self, is_start_route):
+        if is_start_route:
+            @self.router.message(Command('start'))
+            async def start(message: Message, state: FSMContext):
+                await state.set_state(self.states[self.current_state][0])
+                await message.answer(**(await self.states[self.current_state][1].get_for_send()))
 
         @self.router.callback_query(F.data.split(':')[-1] == 'forward')
         async def forward(callback_query: CallbackQuery, state: FSMContext):
@@ -114,27 +110,4 @@ class FrameManager:
 
                 else:
                     await state.update_data(**{callback_query.data.split(':')[1]: callback_query.data.split(':')[-1]})
-                    await callback_query.answer(**(await self.states[index][1].get_for_send(state=state)))
-
-
-async def custom_handler(callback_query: CallbackQuery, state: FSMContext):
-    print(callback_query.data)
-
-
-async def print_state(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer(text='последний frame')
-    print(await state.get_data())
-
-
-fr = [
-    FrameModel(text='first_step', buttons=['1', '2', '3'], custom_handler=custom_handler),
-    FrameModel(text='test2', buttons=['1', '2', '3']),
-    FrameModel(text='test3', buttons=['1', '2', '3']),
-    FrameModel(text='test4', buttons=['1', '2', '3']),
-    FrameModel(text='test5', buttons=['1', '2', '3'], custom_handler=print_state),
-]
-
-fm = FrameManager(TestStates(), frames=fr)
-dp = Dispatcher()
-dp.include_router(fm.router)
-dp.run_polling(Bot('7640053974:AAGIJKrJGDz0FazV-_-nv7aIB_JEP5_bM4s'))
+                    await callback_query.answer(**(await self.states[self.current_state][1].get_for_send(state=state)))
