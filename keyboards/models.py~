@@ -23,6 +23,7 @@ class ButtonModel(BaseModel):
         """
         Валидатор для проверки, что если is_navigation=True, то move_forward или move_back должны быть True.
         """
+        print(data.keys())
         if isinstance(data, dict):
             values = data
         else:

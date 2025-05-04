@@ -1,0 +1,140 @@
+from aiogram import Bot, Dispatcher, Router, F
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.state import StatesGroup, State
+
+from keyboards.keyboard import KeyboardsCreator
+from keyboards.models import ButtonModel
+from frames.models import FrameModel
+
+
+class TestStates(StatesGroup):
+    city = State()
+    district = State()
+    t = State()
+    t2 = State()
+    t3= State()
+
+
+class Frame:
+    def __init__(self, text: str, buttons: list[str], state: str, **kwargs):
+        """
+        :param text:
+        :param buttons:
+        :param kwargs: тут могут быть ключи:
+        cstm_back_btn , cstm_frwd_btn, buttons_generator: Callable, custom_handler: Callable,
+        move_forward, move_back
+        """
+        self.text = text
+        self.custom_handler = kwargs.get('custom_handler')
+        if not kwargs.get('buttons_generator'):
+            self.keyboard = self.generate_keyboard(buttons, state, **kwargs)
+        else:
+            self.state = state
+            self.buttons_generator = kwargs.get('buttons_generator')
+
+    def generate_keyboard(self, buttons, state, **kwargs):
+        l = list()
+        for button in buttons:
+            l.append(ButtonModel(
+                text=str(button), type='inline',
+                ))
+        if kwargs.get('move_back'):
+            if kwargs.get('cstm_back_btn'):
+                l.append(ButtonModel(text=kwargs.get('cstm_back_btn'),
+                                     type='inline',
+                                     move_back=True))
+            else:
+                l.append(ButtonModel(text='Назад', type='inline',
+                                     move_back=True))
+        if kwargs.get('move_forward'):
+            if kwargs.get('cstm_frwd_btn'):
+                l.append(ButtonModel(text=kwargs.get('cstm_frwd_btn'),
+                                     type='inline',
+                                     move_forward=True))
+            else:
+                l.append(ButtonModel(text='Далее', type='inline',
+                                 move_forward=True))
+        res = KeyboardsCreator.get_keyboard(keyboard_type='inline', row_width=2,
+                                                      buttons=l, state_group_state=state)
+        return res
+
+    async def get_for_send(self, **kwargs):
+        if hasattr(self, 'keyboard'):
+            return {'text': self.text, 'reply_markup': self.keyboard}
+        else:
+            return {'text': self.text, 'reply_markup': await self.generate_keyboard(self.buttons_generator(),
+                                                                                    self.state,
+                                                                                    **kwargs)}
+
+class FrameManager:
+    router = Router()
+    def __init__(self, states: StatesGroup, frames: list[FrameModel]):
+        self.current_state: int = 0
+        self.states = self.generate_frames(states, frames)
+        self.register()
+
+    def generate_frames(self, states, frames):
+        res = dict()
+        states_len = len(states.__states__)
+        for i in range(len(states.__states__)):
+            frame = frames[i].model_dump()
+            if frame['move_forward'] is None and i < states_len - 1:
+                frame['cstm_frwd_btn'] = 'Далее' if frame['cstm_frwd_btn'] is None else frame['cstm_frwd_btn']
+                frame['move_forward'] = True
+            if frame['move_back'] is None and i > 0:
+                frame['cstm_back_btn'] = 'Назад' if frame['cstm_back_btn'] is None else frame['cstm_back_btn']
+                frame['move_back'] = True
+            res[i] = [states.__states__[i], Frame(**frame, state=states.__all_states_names__[i])]
+        return res
+
+    def register(self):
+        @self.router.message()
+        async def start(message: Message, state: FSMContext):
+            await state.set_state(self.states[self.current_state][0])
+            await message.answer(**(await self.states[self.current_state][1].get_for_send()))
+
+        @self.router.callback_query(F.data.split(':')[-1] == 'forward')
+        async def forward(callback_query: CallbackQuery, state: FSMContext):
+            self.current_state += 1
+            await state.set_state(self.states[self.current_state][0])
+            await callback_query.message.answer(**(await self.states[self.current_state][1].get_for_send(state=state)))
+
+        @self.router.callback_query(F.data.split(':')[-1] == 'back')
+        async def back(callback_query: CallbackQuery, state: FSMContext):
+            self.current_state -= 1
+            await state.set_state(self.states[self.current_state][0])
+            await callback_query.message.answer(**(await self.states[self.current_state][1].get_for_send(state=state)))
+
+        for index in self.states:
+            @self.router.callback_query(self.states[index][0])
+            async def handle_event(callback_query: CallbackQuery, state: FSMContext):
+                if self.states[self.current_state][1].custom_handler:
+                    await self.states[self.current_state][1].custom_handler(callback_query, state)
+
+                else:
+                    await state.update_data(**{callback_query.data.split(':')[1]: callback_query.data.split(':')[-1]})
+                    await callback_query.answer(**(await self.states[index][1].get_for_send(state=state)))
+
+
+async def custom_handler(callback_query: CallbackQuery, state: FSMContext):
+    print(callback_query.data)
+
+
+async def print_state(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.answer(text='последний frame')
+    print(await state.get_state())
+
+
+fr = [
+    FrameModel(text='first_step', buttons=['1', '2', '3'], custom_handler=custom_handler),
+    FrameModel(text='test2', buttons=['1', '2', '3']),
+    FrameModel(text='test3', buttons=['1', '2', '3']),
+    FrameModel(text='test4', buttons=['1', '2', '3']),
+    FrameModel(text='test5', buttons=['1', '2', '3'], custom_handler=print_state),
+]
+
+fm = FrameManager(TestStates(), frames=fr)
+dp = Dispatcher()
+dp.include_router(fm.router)
+dp.run_polling(Bot('7640053974:AAGIJKrJGDz0FazV-_-nv7aIB_JEP5_bM4s'))
