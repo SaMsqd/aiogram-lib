@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -21,11 +23,20 @@ class TestStates(StatesGroup):
 
 
 class Frame:
-    def __init__(self, keyboard, text):
-        pass
+    def __init__(self, keyboard, text, frame_custom_handler: Callable=None, buttons_generation_func: Callable=None):
+        if
+        self.keyboard = keyboard
+        self.text = text
+        self.frame_custom_handler = frame_custom_handler
+        self.buttons_generation_func = buttons_generation_func
+
+    def to_send(self):
+        return {'reply_markup': self.keyboard, 'text': self.text}
+
+    def
 
     def generate_message(self):
-        Message.reply(text=self.text, reply_markup=self.keyboard)
+        Message(text=self.text, reply_markup=self.keyboard)
 
 
 class FrameManager:

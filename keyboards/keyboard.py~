@@ -42,9 +42,9 @@ class Keyboards:
                     el = el.model_dump()
                 if isinstance(el, dict):
                     if el['move_forward']:
-                        keyboard[-1].append(Buttons.MyInlineKeyboardButton(text=el['text'], callback_data=f'{state_group_state}:{i}:forward'))
+                        keyboard[-1].append(Buttons.MyInlineKeyboardButton(text='>>', callback_data=f'{state_group_state}:{i}:forward'))
                     elif el['move_back']:
-                        keyboard[-1].append(Buttons.MyInlineKeyboardButton(text=el['text'], callback_data=f'{state_group_state}:{i}:back'))
+                        keyboard[-1].append(Buttons.MyInlineKeyboardButton(text='<<', callback_data=f'{state_group_state}:{i}:back'))
                     else:
                         keyboard[-1].append(ButtonTypes.get_button_type(text=el['type'])(el['text'],
                                                                                          callback_data=f'{state_group_state}:{i}:{el['text']}'))
