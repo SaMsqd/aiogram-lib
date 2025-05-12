@@ -4,8 +4,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.state import StatesGroup, State
 
-from keyboards.keyboard import KeyboardsCreator
-from keyboards.models import ButtonModel
+from ..keyboards.keyboard import KeyboardsCreator
+from ..keyboards.models import ButtonModel
 from .models import FrameModel
 
 
@@ -20,8 +20,11 @@ class Frame:
         """
         self.text = text
         self.custom_handler = kwargs.get('custom_handler')
-        if not kwargs.get('buttons_generator'):
-            self.keyboard = self.generate_keyboard(buttons, state, **kwargs)
+        if kwargs.get('image'): self.image = kwargs.get('image')
+
+        if kwargs.get('save_answer'): self.save_answer = kwargs.get('save_answer')
+
+        if not kwargs.get('buttons_generator'): self.keyboard = self.generate_keyboard(buttons, state, **kwargs)
         else:
             self.state = state
             self.buttons_generator = kwargs.get('buttons_generator')
@@ -53,10 +56,11 @@ class Frame:
         return res
 
     async def get_for_send(self, **kwargs):
-        if hasattr(self, 'keyboard'):
-            return {'text': self.text, 'reply_markup': self.keyboard}
-        else:
-            return {'text': self.text, 'reply_markup': self.generate_keyboard(state=self.state,
+        res = {}
+        if self.image:
+            res |= {'photo': self.image, 'caption': self.text}
+        if hasattr(self, 'keyboard'): return res | {'text': self.text, 'reply_markup': self.keyboard}
+        else: return res | {'text': self.text, 'reply_markup': self.generate_keyboard(state=self.state,
                                                                               **(await self.buttons_generator(**kwargs)),
                                                                                     )}
 
@@ -64,7 +68,6 @@ class FrameManager:
     router: Router
     def __init__(self, states: StatesGroup, frames: list[FrameModel], is_start_route=False):
         self.router = Router(name=StatesGroup.__name__)
-        self.current_state: int = 0
         self.states = self.generate_frames(states, frames)
         self.register(is_start_route)
         print(f'frames registered, router {StatesGroup.__name__} is ready to work')
@@ -80,6 +83,7 @@ class FrameManager:
             if frame['move_back'] is None and i > 0:
                 frame['cstm_back_btn'] = 'Назад' if frame['cstm_back_btn'] is None else frame['cstm_back_btn']
                 frame['move_back'] = True
+
             res[i] = [states.__states__[i], Frame(**frame, state=states.__all_states_names__[i])]
         return res
 
@@ -87,28 +91,45 @@ class FrameManager:
         if is_start_route:
             @self.router.message(Command('start'))
             async def start(message: Message, state: FSMContext):
-                await state.set_state(self.states[self.current_state][0])
-                await message.answer(**(await self.states[self.current_state][1].get_for_send()))
+                await state.update_data(current_state=0)
+                current_state = 0
+                await state.set_state(self.states[current_state][0])
+                frame = self.states[current_state][1]
+                if frame.image: await message.answer_photo(**(await frame.get_for_send()), parse_mode='HTML')
+
+                else: await message.answer(**(await frame.get_for_send()), parse_mode='HTML')
 
         @self.router.callback_query(F.data.split(':')[-1] == 'forward')
         async def forward(callback_query: CallbackQuery, state: FSMContext):
-            self.current_state += 1
-            await state.set_state(self.states[self.current_state][0])
-            await callback_query.message.answer(**(await self.states[self.current_state][1].get_for_send(state=state)))
+            current_state = (await state.get_data()).get('current_state') + 1
+            await state.update_data(current_state=current_state)
+            await state.set_state(self.states[current_state][0])
+            frame = self.states[current_state][1]
+            if frame.image: await callback_query.message.answer_photo(**(await frame.get_for_send()), parse_mode='HTML')
+
+            else: await callback_query.message.answer(**(await frame.get_for_send()), parse_mode='HTML')
 
         @self.router.callback_query(F.data.split(':')[-1] == 'back')
         async def back(callback_query: CallbackQuery, state: FSMContext):
-            self.current_state -= 1
-            await state.set_state(self.states[self.current_state][0])
-            await callback_query.message.answer(**(await self.states[self.current_state][1].get_for_send(state=state)))
+            current_state = (await state.get_data()).get('current_state') - 1
+            await state.update_data(current_state=current_state)
+            await state.set_state(self.states[current_state][0])
+            frame = self.states[current_state][1]
+            if frame.image: await callback_query.message.answer_photo(**(await frame.get_for_send()), parse_mode='HTML')
+
+            else: await callback_query.message.answer(**(await frame.get_for_send()), parse_mode='HTML')
 
         for index in self.states:
             @self.router.callback_query(self.states[index][0])
             async def handle_event(callback_query: CallbackQuery, state: FSMContext):
-                if self.states[self.current_state][1].custom_handler:
-                    await self.states[self.current_state][1].custom_handler(callback_query, state)
+                current_state = (await state.get_data()).get('current_state')
+                if self.states[current_state][1].custom_handler:
+                    await self.states[current_state][1].custom_handler(callback_query, state)
 
                 else:
-                    await state.update_data(**{callback_query.data.split(':')[1]: callback_query.data.split(':')[-1]})
-                    await callback_query.answer(**(await self.states[self.current_state][1].get_for_send(state=state)))
-                    await callback_query.answer(await state.get_state())
+                    frame = self.states[current_state][1]
+                    if frame.save_answer: await state.update_data(**{callback_query.data.split(':')[1]: callback_query.data.split(':')[-1]})
+
+                    if frame.image: await callback_query.message.answer_photo(**(await frame.get_for_send()), parse_mode='HTML')
+
+                    else: await callback_query.message.answer(**(await frame.get_for_send()), parse_mode='HTML')
